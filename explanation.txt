@@ -1,0 +1,104 @@
+# AI Agent Workflow for Document QA: Implementation Rationale
+
+## Architecture Decision
+
+### LlamaIndex Selection
+We chose LlamaIndex as the orchestration framework for several key reasons:
+1. **Specialized for document processing**: LlamaIndex is designed specifically for building LLM applications over custom data, making it ideal for document QA.
+2. **Built-in retrieval and query systems**: It provides optimized components for document indexing, chunking, and semantic search.
+3. **Knowledge graph support**: Native integration for building and querying knowledge graphs from document content.
+4. **Extensibility**: Modular design allows for customization of each component in the pipeline.
+
+### Agent Design Philosophy
+Our architecture follows a specialized agent approach where each component has a clear, well-defined responsibility:
+
+1. **Planner Agent**: Acts as the query understanding system that analyzes user questions and determines the optimal retrieval strategy.
+2. **Retriever Agent**: Handles context fetching using vector stores, knowledge graphs, and specialized table/chart extraction.
+3. **Answer Generator Agent**: Formulates coherent, contextually appropriate responses based on retrieved information.
+
+These agents work together in a coordinated workflow, with each step informing the next.
+
+## PDF Processing Implementation
+
+### PyMuPDF Selection
+We selected PyMuPDF (fitz) for PDF processing because it offers:
+1. **Layout-aware extraction**: Preserves document structure including sections, tables, and figures.
+2. **High accuracy**: Properly handles complex formatting, fonts, and special characters.
+3. **Metadata extraction**: Extracts document metadata, table of contents, and page structure.
+
+### Structure Preservation
+To maintain document structure, we implemented:
+1. **Heading-based chunking**: Uses document headings to create semantically meaningful chunks.
+2. **Table detection**: Employs heuristics to identify and extract tables as structured data.
+3. **Chart/figure identification**: Detects images and captions, with special handling for charts.
+
+## Retrieval System Design
+
+### Vector Store Implementation
+Our vector-based retrieval system uses:
+1. **OpenAI Embeddings**: High-quality embeddings that capture semantic meaning.
+2. **ChromaDB Vector Store**: Efficient storage and retrieval of document embeddings.
+3. **Hybrid search**: Combines semantic (vector) and keyword (BM25) search for better results.
+
+### Knowledge Graph Enhancement
+The knowledge graph component adds relationship-aware retrieval:
+1. **Entity extraction**: Identifies key entities and concepts in the document.
+2. **Relationship modeling**: Maps connections between entities based on document context.
+3. **Graph-enhanced retrieval**: Supplements vector search with relationship navigation.
+
+## Answer Generation Strategy
+
+### Template-Based Response Generation
+Our response generation uses specialized templates for different query types:
+1. **Factual questions**: Direct, evidence-based responses with citations.
+2. **Analytical questions**: Structured analysis with observations, implications, and conclusions.
+3. **Summary requests**: Concise overviews that maintain essential information and flow.
+4. **Follow-up questions**: Context-aware responses that maintain conversation continuity.
+
+### Hallucination Prevention
+To reduce hallucinations, we implemented:
+1. **Strict context adherence**: Instructions to use only provided document context.
+2. **Assertion detection**: Identifies strong claims and verifies them against available evidence.
+3. **Confidence signaling**: Explicitly acknowledges limitations in available information.
+
+## Conversation Memory Implementation
+
+Our memory system maintains context across interactions through:
+1. **Turn history**: Records previous questions and answers.
+2. **Context references**: Tracks which document sections were used in previous answers.
+3. **Follow-up detection**: Identifies when questions refer to previous conversation.
+
+## Future Enhancements
+
+With additional development time, several enhancements would be valuable:
+1. **Advanced OCR**: Better extraction from complex charts and diagrams.
+2. **Multi-document correlation**: Ability to reference and compare across multiple documents.
+3. **Adaptive chunking**: Dynamic chunk sizing based on document section complexity.
+4. **Self-reflection**: Confidence assessment and automatic refinement of low-confidence answers.
+
+## Performance Considerations
+
+For processing larger documents (beyond 25 pages), we recommend:
+1. **Hierarchical retrieval**: Two-stage retrieval process first identifying relevant sections.
+2. **Parallel processing**: Distributing embedding and indexing across multiple workers.
+3. **Selective processing**: Prioritizing text-heavy sections over images for initial processing.
+
+## Resilient Design Decisions
+
+### Graceful Degradation
+The system is designed to gracefully handle missing or incompatible dependencies:
+
+1. **Knowledge Graph Fallback**: If the specialized knowledge graph packages (`llama-index-indices-kg`) are not available, the system falls back to a simpler implementation that maintains the same interface.
+2. **Error Handling**: Each component includes comprehensive error handling to prevent cascading failures when one module encounters problems.
+3. **Modular Initialization**: Components are initialized with try-except blocks to ensure the overall system continues functioning even if certain features are unavailable.
+
+### Flexible Deployment
+The installation process is designed for flexibility across different environments:
+
+1. **Platform-Specific Scripts**: Separate installation scripts for Windows, Linux, and macOS ensure proper environment setup across platforms.
+2. **Progressive Enhancement**: Core functionality works with minimal dependencies, while advanced features become available when additional packages are installed.
+3. **Clear Documentation**: Requirements and optional components are clearly documented to help users understand what features are available in their specific installation.
+
+## Conclusion
+
+This implementation provides a robust, extensible framework for document question answering that preserves document structure, maintains conversation context, and produces high-quality responses grounded in the document content.

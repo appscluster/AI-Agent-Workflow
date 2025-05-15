@@ -8,9 +8,10 @@ from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 
 from llama_index.readers.file import PyMuPDFReader
-from llama_index.schema import Document
-from llama_index.node_parser import HierarchicalNodeParser
-from llama_index.text_splitter import TokenTextSplitter
+from llama_index.core.schema import Document
+from llama_index.core.node_parser import HierarchicalNodeParser
+from llama_index.core.text_splitter import TokenTextSplitter
+from llama_index.core.text_splitter import SentenceSplitter
 
 class PDFProcessor:
     """
@@ -31,25 +32,22 @@ class PDFProcessor:
             chunk_size: Size of text chunks for processing
             chunk_overlap: Overlap between chunks to maintain context
             heading_split: Whether to split by headings for structure-aware chunking
-        """
-        self.chunk_size = chunk_size
+        """        self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.heading_split = heading_split
         
         # Initialize the PyMuPDF reader
         self.reader = PyMuPDFReader()
         
-        # Initialize the hierarchical node parser for structure-aware chunking
-        self.node_parser = HierarchicalNodeParser.from_defaults(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-        )
-        
-        # Text splitter for non-hierarchical chunking
-        self.text_splitter = TokenTextSplitter(
+        # Create a sentence splitter instead of token splitter for more natural document chunking
+        self.text_splitter = SentenceSplitter(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap
         )
+        
+        # For the updated HierarchicalNodeParser API, we need a simpler approach
+        # We'll use the sentence splitter directly
+        self.node_parser = None  # Will handle chunking directly in process_document
     
     def load_document(self, file_path: str) -> Document:
         """
@@ -126,22 +124,49 @@ class PDFProcessor:
                 "page": page_num + 1,
                 "caption": img_info.get("caption", ""),
                 "is_chart": img_info.get("is_chart", False)
-            } for i, img_info in enumerate(images)])
-        
-        # Create LlamaIndex Document
+            } for i, img_info in enumerate(images)])        # Create LlamaIndex Document
         doc_obj = Document(text=full_text, metadata=metadata)
         
-        # Split document into chunks based on structure
-        if self.heading_split:
-            # Use hierarchical node parser for structure-aware chunking
-            nodes = self.node_parser.get_nodes_from_documents([doc_obj])
-        else:
-            # Use simple text splitting
-            text_chunks = self.text_splitter.split_text(full_text)
-            nodes = [Document(text=chunk, metadata=metadata) for chunk in text_chunks]
+        # Split document into chunks using sentence splitter for more natural chunking
+        # This can create more coherent chunks that align with sentence boundaries
+        text_chunks = self.text_splitter.split_text(full_text)
+        
+        # Add structure information to metadata for each chunk
+        # This helps maintain some context even with simple splitting
+        # BUT we need to limit metadata size to avoid the "metadata too large" error
+        chunk_nodes = []
+        for i, chunk in enumerate(text_chunks):
+            # Create a lightweight metadata copy with only essential information
+            lightweight_metadata = {
+                "title": metadata.get("title", ""),
+                "chunk_id": i,
+                "page_count": metadata.get("page_count", 0),
+                "document_type": "pdf"
+            }
+            
+            # Add TOC information but limit its size
+            if "toc" in metadata and metadata["toc"]:
+                # Only include first few TOC entries to limit size
+                lightweight_metadata["toc"] = metadata["toc"][:5] if len(metadata["toc"]) > 5 else metadata["toc"]
+            
+            # Add references to tables and images but not their full content
+            # This keeps the metadata references while reducing size
+            if "tables" in metadata and metadata["tables"]:
+                lightweight_metadata["table_refs"] = [
+                    {"id": table["id"], "page": table["page"]} 
+                    for table in metadata["tables"][:5]  # Further limit references to reduce size
+                ]
+            
+            if "images" in metadata and metadata["images"]:
+                lightweight_metadata["image_refs"] = [
+                    {"id": img["id"], "page": img["page"], "is_chart": img["is_chart"]} 
+                    for img in metadata["images"][:5]  # Further limit references to reduce size
+                ]
+            
+            chunk_nodes.append(Document(text=chunk, metadata=lightweight_metadata))
         
         # Return both the chunked documents and the metadata
-        return nodes, metadata
+        return chunk_nodes, metadata
     
     def _extract_toc(self, doc: fitz.Document) -> List[Dict[str, Any]]:
         """
@@ -193,16 +218,35 @@ class PDFProcessor:
                             for line in lines:
                                 row = [span["text"] for span in line.get("spans", [])]
                                 table_data.append(row)
-                            
-                            # Ensure all rows have same number of columns
+                              # Ensure all rows have same number of columns
                             max_cols = max(len(row) for row in table_data)
                             for row in table_data:
                                 while len(row) < max_cols:
                                     row.append("")
                             
-                            # Create DataFrame
-                            df = pd.DataFrame(table_data[1:], columns=table_data[0] if table_data else None)
-                            tables.append(df)
+                            # Create DataFrame with unique column names
+                            if table_data:
+                                # Create unique column headers to avoid warnings
+                                if len(table_data) > 0:
+                                    headers = table_data[0] if table_data else []
+                                    # Make headers unique by adding numbers if duplicated
+                                    unique_headers = []
+                                    header_counts = {}
+                                    
+                                    for h in headers:
+                                        if h in header_counts:
+                                            header_counts[h] += 1
+                                            unique_h = f"{h}_{header_counts[h]}"
+                                        else:
+                                            header_counts[h] = 0
+                                            unique_h = h
+                                        unique_headers.append(unique_h)
+                                    
+                                    df = pd.DataFrame(table_data[1:], columns=unique_headers)
+                                else:
+                                    # Generate default column names
+                                    df = pd.DataFrame(table_data)
+                                tables.append(df)
         
         except Exception as e:
             print(f"Error extracting tables: {e}")

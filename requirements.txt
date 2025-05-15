@@ -4,8 +4,10 @@ llama-index-embeddings-openai>=0.1.0
 llama-index-llms-openai>=0.1.0
 llama-index-readers-file>=0.1.0
 llama-index-vector-stores-chroma>=0.1.0
-llama-index-graph-stores-nebula>=0.1.0
-llama-index-indices-kg>=0.1.0
+# Optional graph store - uncomment if you want to use it
+# llama-index-graph-stores-nebula>=0.1.0
+# Knowledge graph functionality - optional, system works without it
+# llama-index-indices-kg>=0.1.0
 networkx>=3.1.0
 PyMuPDF>=1.22.0
 pydantic>=2.0.0

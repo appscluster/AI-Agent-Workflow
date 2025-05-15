@@ -7,9 +7,9 @@ import numpy as np
 
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.schema import Document
-from llama_index.indices.vector_store import VectorStoreIndex
-from llama_index.storage.storage_context import StorageContext
+from llama_index.core.schema import Document
+from llama_index.core.indices.vector_store import VectorStoreIndex
+from llama_index.core.storage.storage_context import StorageContext
 from chromadb.config import Settings
 
 class DocumentEmbeddings:
@@ -23,7 +23,7 @@ class DocumentEmbeddings:
         self,
         collection_name: str = "document_collection",
         persist_dir: Optional[str] = None,
-        embedding_model: str = "text-embedding-3-small"
+        embedding_model: str = "text-embedding-ada-002"
     ):
         """
         Initialize embeddings manager.
