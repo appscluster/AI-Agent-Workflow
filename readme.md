@@ -71,6 +71,20 @@ AI-Agent-Workflow/
    python main.py --document path/to/document.pdf --questions questions.txt
    ```
 
+## Usage
+
+Run the main script with a PDF document:
+
+```bash
+python main.py --document "path/to/document.pdf" --interactive
+```
+
+Process a document with predefined questions and save answers to a file:
+
+```bash
+python c:\home\AI-Agent-Workflow\main.py --document c:\home\AI-Agent-Workflow\samples\Test_Document.pdf --questions c:\home\AI-Agent-Workflow\test_questions.txt --output c:\home\AI-Agent-Workflow\temp_answers.txt
+```
+
 ## Implementation Decisions
 
 - **LlamaIndex** was chosen for orchestration due to its state management capabilities and flexible node structure
@@ -126,10 +140,3 @@ If you encounter import errors related to pydantic and chromadb, ensure you're u
 
 These specific versions are required for compatibility.
 
-## Usage
-
-Run the main script with a PDF document:
-
-```bash
-python main.py --document "path/to/document.pdf" --interactive
-```
