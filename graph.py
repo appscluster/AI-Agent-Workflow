@@ -2,6 +2,7 @@
 LlamaIndex graph orchestration for document question answering workflow.
 """
 from typing import Dict, Any, List, Tuple, Callable, Optional
+import os
 
 import logging
 from llama_index.core import Settings
@@ -13,7 +14,7 @@ from agents.retriever import RetrieverAgent
 from agents.answer_generator import AnswerGeneratorAgent
 from utils.embeddings import DocumentEmbeddings
 from utils.memory import ConversationMemory
-from utils.knowledge_graph import DocumentKnowledgeGraph
+# Removed import of DocumentKnowledgeGraph
 
 # Optional: Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,8 +45,22 @@ class QAWorkflowGraph:
         """
         # Set up document path and persistence
         self.document_path = document_path
-        self.persist_dir = persist_dir
-        self.use_knowledge_graph = use_knowledge_graph        # Configure LlamaIndex settings
+        self.persist_dir = persist_dir or os.path.join(os.getcwd(), "data")
+        self.use_knowledge_graph = use_knowledge_graph
+        self.openai_api_key = openai_api_key  # Store API key
+        
+        # Initialize default attributes to prevent AttributeError
+        self.embeddings = None
+        self.embeddings_manager = None  # Add this attribute
+        self.knowledge_graph = None
+        self.document_chunks = []
+        self.document_metadata = {}
+        self.document_text = ""
+        
+        # Create persist directory if it doesn't exist
+        os.makedirs(self.persist_dir, exist_ok=True)
+        
+        # Configure LlamaIndex settings
         if openai_api_key:
             Settings.openai_api_key = openai_api_key
         
@@ -61,43 +76,66 @@ class QAWorkflowGraph:
         self._initialize_components()
         
         # Document metadata and state
-        self.document_chunks = []
-        self.document_metadata = {}
         self.is_document_processed = False
-        
+    
     def _initialize_components(self):
         """
         Initialize the workflow components.
         """
         # Import here to avoid circular imports
-        from pdf_loader import PDFProcessor
+        logger.info("Initializing QA workflow")
         
-        # Initialize PDF processor
+        # Import necessary components
+        from pdf_loader import PDFProcessor
+        from utils.knowledge_graph import DocumentKnowledgeGraph
+        
+        # Initialize PDF processor with document_path
         self.pdf_processor = PDFProcessor(
-            chunk_size=1024,
-            chunk_overlap=128,
+            document_path=self.document_path,
             heading_split=True
         )
         
-        # Initialize embeddings manager
-        self.embeddings_manager = DocumentEmbeddings(
-            collection_name="qa_workflow",
-            persist_dir=self.persist_dir
-        )
+        # Initialize other components
+        self._initialize_embeddings()
         
-        # Initialize knowledge graph (optional)
-        self.knowledge_graph = None
         if self.use_knowledge_graph:
+            # Initialize fallback knowledge graph directly
             try:
-                from utils.knowledge_graph import DocumentKnowledgeGraph
                 self.knowledge_graph = DocumentKnowledgeGraph(
-                    space_name="document_kg",
-                    persist_dir=self.persist_dir
+                    space_name=os.path.basename(self.document_path),
+                    persist_dir=self.persist_dir,
+                    llm=Settings.llm
                 )
-            except ImportError as e:
-                logging.warning(f"Knowledge graph functionality not available: {e}")
-                logging.warning("Continuing without knowledge graph support")
-                self.use_knowledge_graph = False
+            except Exception as e:
+                logger.error(f"Error initializing knowledge graph: {e}")
+                self.knowledge_graph = None
+
+    def _initialize_embeddings(self):
+        """
+        Initialize embeddings.
+        """
+        try:
+            from utils.embeddings import DocumentEmbeddings
+            
+            # Initialize document embeddings
+            self.embeddings = DocumentEmbeddings(
+                persist_dir=self.persist_dir,
+                openai_api_key=self.openai_api_key  # Pass API key
+            )
+            
+            # For backward compatibility, also set embeddings_manager
+            self.embeddings_manager = self.embeddings
+            
+        except ImportError as e:
+            logger.error(f"Error initializing embeddings: {e}")
+            logger.warning("Continuing without embeddings support")
+            self.embeddings = None
+            self.embeddings_manager = None
+        except Exception as e:
+            logger.error(f"Unexpected error initializing embeddings: {e}")
+            logger.warning("Continuing without embeddings support")
+            self.embeddings = None
+            self.embeddings_manager = None
         
         # Initialize agents
         self.planner = PlannerAgent()
@@ -120,19 +158,48 @@ class QAWorkflowGraph:
         logger.info(f"Processing document: {self.document_path}")
         
         try:
-            # Process document with PDF loader
-            self.document_chunks, self.document_metadata = self.pdf_processor.process_document(
-                self.document_path
-            )
+            # Try the process_document method first
+            try:
+                self.document_chunks, self.document_metadata = self.pdf_processor.process_document()
+            except AttributeError:
+                # Fall back to the process method
+                result = self.pdf_processor.process()
+                self.document_chunks = result["chunks"]
+                self.document_metadata = result["metadata"]
+                self.document_text = result.get("text", "")
             
-            # Index document chunks in vector store
-            logger.info(f"Indexing {len(self.document_chunks)} document chunks")
-            self.embeddings_manager.index_documents(self.document_chunks)
+            logger.info(f"Document processed: {len(self.document_chunks)} chunks")
             
-            # Build knowledge graph if enabled
-            if self.use_knowledge_graph and self.knowledge_graph:
-                logger.info("Building knowledge graph")
-                self.knowledge_graph.build_graph(self.document_chunks)
+            # Create a document dictionary for processing
+            document_dict = {
+                "chunks": self.document_chunks,
+                "metadata": self.document_metadata,
+                "text": self.document_text
+            }
+            
+            # Process document with embeddings - with safe attribute check
+            if hasattr(self, 'embeddings') and self.embeddings:
+                try:
+                    logger.info("Indexing document with embeddings...")
+                    self.embeddings.process_document(document_dict)
+                    
+                    # Explicitly call index_documents if it exists
+                    if hasattr(self.embeddings, 'index_documents'):
+                        logger.info("Calling index_documents on embeddings...")
+                        self.embeddings.index_documents(self.document_chunks, 
+                                                        metadata=[self.document_metadata] * len(self.document_chunks))
+                except Exception as e:
+                    logger.error(f"Error processing document with embeddings: {e}")
+                    logger.warning("Continuing without embeddings")
+            
+            # Process document with knowledge graph - with safe attribute check
+            if self.use_knowledge_graph and hasattr(self, 'knowledge_graph') and self.knowledge_graph:
+                try:
+                    logger.info("Processing document with knowledge graph...")
+                    self.knowledge_graph.process_document(document_dict)
+                except Exception as e:
+                    logger.error(f"Error processing document with knowledge graph: {e}")
+                    logger.warning("Continuing without knowledge graph")
             
             # Store document metadata in conversation memory
             self.memory.set_document_metadata(self.document_metadata)

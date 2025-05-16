@@ -1,22 +1,23 @@
-llama-index>=0.9.0
-llama-index-agent-openai>=0.1.0
-llama-index-embeddings-openai>=0.1.0
-llama-index-llms-openai>=0.1.0
-llama-index-readers-file>=0.1.0
-llama-index-vector-stores-chroma>=0.1.0
-# Optional graph store - uncomment if you want to use it
-# llama-index-graph-stores-nebula>=0.1.0
-# Knowledge graph functionality - optional, system works without it
-# llama-index-indices-kg>=0.1.0
-networkx>=3.1.0
-PyMuPDF>=1.22.0
-pydantic>=2.0.0
-faiss-cpu>=1.7.4
-numpy>=1.24.0
-python-dotenv>=1.0.0
-tabulate>=0.9.0
-matplotlib>=3.7.0
-pandas>=2.0.0
-pillow>=10.0.0
-pytesseract>=0.3.10
-chromadb>=0.4.18
+# Core dependencies
+python-dotenv>=0.19.0
+openai>=0.27.0
+
+# PDF processing
+PyPDF2>=2.0.0
+pdfminer.six>=20221105
+
+# Vector database options
+chromadb>=0.4.13
+pydantic<2.0.0
+
+# Embedding libraries (one of these will be used)
+llama-index>=0.8.11
+langchain>=0.0.267
+
+# Knowledge graph
+networkx>=2.8.8
+pyvis>=0.3.2
+
+# Utility
+numpy>=1.24.3
+matplotlib>=3.7.1

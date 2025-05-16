@@ -58,12 +58,16 @@ class RetrieverAgent:
         if vector_search_terms:
             enhanced_query = f"{query} {' '.join(vector_search_terms)}"
         
-        # Perform base retrieval using hybrid search
-        retrieved_nodes = self.embeddings_manager.hybrid_search(
-            enhanced_query,
-            top_k=top_k * 2,  # Get more results initially for filtering
-            alpha=hybrid_weight
-        )
+        # Perform base retrieval using embeddings_manager semantic search
+        if hasattr(self.embeddings_manager, 'get_relevant_chunks'):
+            chunk_texts = self.embeddings_manager.get_relevant_chunks(
+                enhanced_query,
+                top_k=top_k * 2
+            )
+            # Wrap chunks in Document nodes
+            retrieved_nodes = [Document(text=ct) for ct in chunk_texts]
+        else:
+            retrieved_nodes = []
         
         # Apply keyword filters if specified
         if keyword_filters:

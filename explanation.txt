@@ -35,10 +35,10 @@ To maintain document structure, we implemented:
 ## Retrieval System Design
 
 ### Vector Store Implementation
-Our vector-based retrieval system uses:
-1. **OpenAI Embeddings**: High-quality embeddings that capture semantic meaning.
-2. **ChromaDB Vector Store**: Efficient storage and retrieval of document embeddings.
-3. **Hybrid search**: Combines semantic (vector) and keyword (BM25) search for better results.
+Our vector-based retrieval system uses LlamaIndex:
+1. **OpenAI Embeddings** (`text-embedding-ada-002`) for high-quality semantic vectors.
+2. **SimpleVectorStore** for in-memory vector storage via LlamaIndex.
+3. **Semantic search** only, leveraging LlamaIndex query engine.
 
 ### Knowledge Graph Enhancement
 The knowledge graph component adds relationship-aware retrieval:

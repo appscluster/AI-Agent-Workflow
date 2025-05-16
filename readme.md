@@ -9,7 +9,7 @@ The system processes 20-25 page business PDFs containing mixed content (text, ta
 ## Features
 
 - PDF document parsing and chunking with structure preservation
-- LangGraph-based orchestration for flexible reasoning
+- LlamaIndex-based orchestration for flexible reasoning
 - Context-aware retrieval system
 - Conversation memory for follow-up questions
 - Modular architecture for easy maintenance and extension
@@ -21,7 +21,7 @@ The project follows a modular design with specialized components:
 ```
 AI-Agent-Workflow/
 ├── main.py                # Main execution script
-├── graph.py               # LangGraph orchestration flow
+├── graph.py               # LlamaIndex Graph orchestration flow
 ├── pdf_loader.py          # PDF processing utilities
 ├── agents/
 │   ├── planner.py         # Query planning agent
@@ -46,7 +46,7 @@ AI-Agent-Workflow/
 
 - Python 3.10+
 - Dependencies (see requirements.txt)
-- LangGraph or equivalent orchestration library
+- LlamaIndex Graph orchestration library
 - Vector database for document indexing
 
 ## Setup and Usage
@@ -73,7 +73,7 @@ AI-Agent-Workflow/
 
 ## Implementation Decisions
 
-- **LangGraph** was chosen for orchestration due to its state management capabilities and flexible node structure
+- **LlamaIndex** was chosen for orchestration due to its state management capabilities and flexible node structure
 - **PyMuPDF** provides robust PDF parsing with layout awareness
 - **Vector embeddings** enable semantic search for accurate information retrieval
 - **Modular agents** allow for specialized reasoning tailored to different query types
@@ -102,3 +102,34 @@ Dr. Abdul Hamid - Project Owner - [LinkedIn](https://www.linkedin.com/in/ahceo/)
 ## License
 
 [MIT License](LICENSE)
+
+# AI Agent Workflow
+
+## Installation
+
+Before running this project, make sure to install the required dependencies:
+
+```bash
+# Create a virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies with specific versions
+pip install -r requirements.txt
+```
+
+## Known Issues
+
+If you encounter import errors related to pydantic and chromadb, ensure you're using the correct versions:
+- pydantic < 2.0.0
+- chromadb == 0.4.13
+
+These specific versions are required for compatibility.
+
+## Usage
+
+Run the main script with a PDF document:
+
+```bash
+python main.py --document "path/to/document.pdf" --interactive
+```

@@ -6,7 +6,15 @@ import argparse
 import logging
 from typing import List, Optional
 
-from graph import QAWorkflowGraph
+# Add try/except for handling import errors
+try:
+    from graph import QAWorkflowGraph
+except ImportError as e:
+    logging.error(f"Import error: {e}")
+    logging.error("There seems to be a dependency issue with chromadb and pydantic.")
+    logging.error("Please run: pip install -r requirements.txt")
+    exit(1)
+
 from dotenv import load_dotenv
 
 # Load environment variables

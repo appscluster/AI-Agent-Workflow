@@ -82,3 +82,16 @@ class DocumentKnowledgeGraph:
         """
         self.build_graph_from_documents(documents)
         return self
+    
+    def process_document(self, document_data: Dict[str, Any]) -> Any:
+        """
+        Compatibility method for workflow: process document for KG.
+        
+        Args:
+            document_data: Dict with 'chunks', 'metadata', 'text'
+            
+        Returns:
+            Result of build_graph_from_documents
+        """
+        chunks = document_data.get("chunks", [])
+        return self.build_graph_from_documents(chunks)

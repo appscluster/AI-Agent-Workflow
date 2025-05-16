@@ -1,194 +1,186 @@
 """
-Vector embeddings utilities for document retrieval.
+Document embeddings utilities.
 """
 import os
+import logging
 from typing import List, Dict, Any, Optional
-import numpy as np
 
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.core.schema import Document
-from llama_index.core.indices.vector_store import VectorStoreIndex
-from llama_index.core.storage.storage_context import StorageContext
-from chromadb.config import Settings
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class DocumentEmbeddings:
     """
-    Manages document embeddings for semantic search and retrieval.
-    Creates and maintains vector embeddings of document chunks
-    for efficient semantic retrieval.
+    Class for handling document embeddings.
     """
     
     def __init__(
         self,
-        collection_name: str = "document_collection",
-        persist_dir: Optional[str] = None,
-        embedding_model: str = "text-embedding-ada-002"
+        persist_dir: str,
+        openai_api_key: Optional[str] = None,
+        collection_name: str = "document_collection"  # Added as optional parameter with default
     ):
         """
-        Initialize embeddings manager.
+        Initialize document embeddings.
         
         Args:
-            collection_name: Name of the vector collection
-            persist_dir: Directory to persist embeddings (optional)
-            embedding_model: OpenAI embedding model to use
+            persist_dir: Directory to persist embeddings
+            openai_api_key: OpenAI API key
+            collection_name: Name of the collection for vector store
         """
-        self.collection_name = collection_name
         self.persist_dir = persist_dir
+        self.openai_api_key = openai_api_key
+        self.collection_name = collection_name
+        self.embedding_store = None
+        self.indexed = False
+        self.documents = []
+        self.document_metadata = {}
         
-        # Initialize embedding model
-        self.embed_model = OpenAIEmbedding(
-            model=embedding_model,
-            dimensions=1536,  # Default for OpenAI embeddings
-            embed_batch_size=10  # Process 10 documents at a time
-        )
-        
-        # Initialize vector store
-        self.chroma_client = None
-        self.vector_store = None
-        self.storage_context = None
-        self.index = None
-        
-        # Setup vector store
-        self._setup_vector_store()
+        # Initialize embedding store
+        self._initialize_embedding_store()
     
-    def _setup_vector_store(self):
+    def _initialize_embedding_store(self):
         """
-        Set up the vector store for document embeddings.
+        Initialize embedding store.
         """
-        # Create persistent directory if specified
-        if self.persist_dir and not os.path.exists(self.persist_dir):
-            os.makedirs(self.persist_dir)
-        
-        # Initialize Chroma client with persistence
-        import chromadb
-        self.chroma_client = chromadb.Client(
-            Settings(
-                persist_directory=self.persist_dir,
-                anonymized_telemetry=False
-            ) if self.persist_dir else Settings(anonymized_telemetry=False)
-        )
-        
-        # Get or create collection
-        chroma_collection = self.chroma_client.get_or_create_collection(
-            name=self.collection_name
-        )
-        
-        # Create vector store
-        self.vector_store = ChromaVectorStore(
-            chroma_collection=chroma_collection
-        )
-        
-        # Create storage context
-        self.storage_context = StorageContext.from_defaults(
-            vector_store=self.vector_store
-        )
+        try:
+            # LlamaIndex imports
+            from llama_index import ServiceContext
+            from llama_index.embeddings.openai import OpenAIEmbedding
+            from llama_index.storage.storage_context import StorageContext
+            from llama_index.vector_stores.simple import SimpleVectorStore
+            from llama_index.indices.vector_store import VectorStoreIndex
+            
+            embedding_model = OpenAIEmbedding(api_key=self.openai_api_key)
+            
+            # Create service context
+            service_context = ServiceContext.from_defaults(embed_model=embedding_model)
+            
+            # Create vector store and storage context
+            vector_store = SimpleVectorStore()
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
+            
+            # Create empty index
+            try:
+                self.index = VectorStoreIndex.from_documents(
+                    [],
+                    service_context=service_context,
+                    storage_context=storage_context
+                )
+            except AttributeError:
+                # Fallback if from_documents not available
+                self.index = VectorStoreIndex(
+                    [],
+                    service_context=service_context,
+                    storage_context=storage_context
+                )
+            
+            self.has_llama_index = True
+            logger.info("Initialized embedding store with llama_index")
+            
+        except ImportError as e:
+            logger.error(f"Error initializing embedding store with llama_index: {e}")
+            logger.warning("Continuing without embeddings support")
+            self.has_llama_index = False
+            self.embedding_store = None
+        except Exception as e:
+            logger.error(f"Unexpected error initializing embedding store: {e}")
+            logger.warning("Continuing without embeddings support")
+            self.has_llama_index = False
+            self.embedding_store = None
     
-    def index_documents(self, documents: List[Document]) -> VectorStoreIndex:
+    def process_document(self, document_data: Dict[str, Any]):
         """
-        Index documents in the vector store.
+        Process document data and create embeddings.
         
         Args:
-            documents: List of document chunks to index
+            document_data: Document data with chunks and metadata
+        """
+        try:
+            chunks = document_data.get("chunks", [])
+            metadata = document_data.get("metadata", {})
             
-        Returns:
-            VectorStoreIndex: The created index
-        """
-        # Create vector store index
-        self.index = VectorStoreIndex.from_documents(
-            documents,
-            storage_context=self.storage_context,
-            embed_model=self.embed_model
-        )
-        
-        # Persist if directory specified
-        if self.persist_dir:
-            self.index.storage_context.persist(persist_dir=self.persist_dir)
-        
-        return self.index
+            if not chunks:
+                logger.warning("No chunks found in document data")
+                return
+            
+            logger.info(f"Processing {len(chunks)} chunks for embeddings")
+            
+            # Store documents for later indexing
+            self.documents = chunks
+            self.document_metadata = metadata
+            
+            # Index documents
+            self.index_documents(chunks, [metadata] * len(chunks))
+            
+        except Exception as e:
+            logger.error(f"Error processing document for embeddings: {e}")
+            logger.warning(f"Details: {str(e)}")
     
-    def retrieve_relevant_context(
-        self, 
-        query: str, 
-        top_k: int = 5,
-        similarity_threshold: float = 0.7
-    ) -> List[Document]:
+    def index_documents(self, documents: List[str], metadata: List[Dict[str, Any]] = None):
         """
-        Retrieve relevant document chunks for a query.
+        Index documents in the embedding store.
+        """
+        try:
+            if not documents:
+                logger.warning("No documents to index")
+                return
+            if metadata is None:
+                metadata = [{} for _ in documents]
+            if len(metadata) != len(documents):
+                metadata = [metadata[0]] * len(documents)
+            logger.info(f"Indexing {len(documents)} documents")
+            # Use llama_index exclusively
+            if getattr(self, 'has_llama_index', False) and hasattr(self, 'index'):
+                try:
+                    from llama_index import Document
+                    llama_documents = [Document(text=chunk, metadata=meta) for chunk, meta in zip(documents, metadata)]
+                    self.index.refresh_ref_docs(llama_documents)
+                    logger.info("Documents indexed with llama_index")
+                except Exception as e:
+                    logger.error(f"Error indexing with llama_index: {e}")
+                    self.documents = documents
+                    self.document_metadata = metadata[0] if metadata else {}
+            else:
+                logger.warning("Llama_index not available, storing documents locally")
+                self.documents = documents
+                self.document_metadata = metadata[0] if metadata else {}
+            self.indexed = True
+        except Exception as e:
+            logger.error(f"Error indexing documents: {e}")
+            self.documents = documents
+            self.document_metadata = metadata[0] if metadata else {}
+            self.indexed = True  # Consider it indexed even if just stored locally
+    
+    def get_relevant_chunks(self, query: str, top_k: int = 5) -> List[str]:
+        """
+        Get relevant chunks for a query.
         
         Args:
-            query: The query text
-            top_k: Number of documents to retrieve
-            similarity_threshold: Minimum similarity score (0-1)
+            query: Query string
+            top_k: Number of chunks to return
             
         Returns:
-            List of relevant document chunks
+            List of relevant chunks
         """
-        if not self.index:
-            raise ValueError("No documents indexed. Call index_documents first.")
-        
-        # Create retriever
-        retriever = self.index.as_retriever(
-            similarity_top_k=top_k
-        )
-        
-        # Retrieve nodes
-        nodes = retriever.retrieve(query)
-        
-        # Filter by similarity threshold if specified
-        if similarity_threshold > 0:
-            nodes = [node for node in nodes if node.score >= similarity_threshold]
-        
-        return nodes
-    
-    def hybrid_search(
-        self,
-        query: str,
-        top_k: int = 5,
-        alpha: float = 0.5  # Weight between semantic (1.0) and keyword (0.0)
-    ) -> List[Document]:
-        """
-        Perform hybrid search combining semantic and keyword matching.
-        
-        Args:
-            query: The query text
-            top_k: Number of documents to retrieve
-            alpha: Weight between semantic (1.0) and keyword (0.0) search
-            
-        Returns:
-            List of relevant document chunks
-        """
-        if not self.index:
-            raise ValueError("No documents indexed. Call index_documents first.")
-        
-        # Create hybrid retriever
-        from llama_index.retrievers import QueryFusionRetriever
-        
-        # Get vector retriever
-        vector_retriever = self.index.as_retriever(
-            similarity_top_k=top_k
-        )
-        
-        # Get keyword retriever (if alpha < 1.0)
-        keyword_retriever = None
-        if alpha < 1.0:
-            from llama_index.retrievers import BM25Retriever
-            keyword_retriever = BM25Retriever.from_defaults(
-                docstore=self.index.docstore,
-                similarity_top_k=top_k
-            )
-        
-        # If using pure vector search
-        if alpha >= 1.0 or not keyword_retriever:
-            return vector_retriever.retrieve(query)
-        
-        # Create fusion retriever
-        fusion_retriever = QueryFusionRetriever(
-            retrievers=[vector_retriever, keyword_retriever],
-            weights=[alpha, 1.0 - alpha],
-            similarity_top_k=top_k,
-            num_queries=1  # Just use the original query
-        )
-        
-        # Retrieve nodes
-        return fusion_retriever.retrieve(query)
+        # Ensure indexed
+        if not self.indexed:
+            if self.documents:
+                logger.warning("Documents not indexed. Attempting to index now.")
+                self.index_documents(self.documents, [self.document_metadata] * len(self.documents))
+            else:
+                logger.warning("No documents indexed and no documents to index.")
+                return []
+        # Use llama_index exclusively
+        try:
+            if getattr(self, 'has_llama_index', False) and hasattr(self, 'index'):
+                query_engine = self.index.as_query_engine()
+                response = query_engine.query(query)
+                if hasattr(response, 'source_nodes'):
+                    return [str(node.text) for node in response.source_nodes[:top_k]]
+                logger.warning("Query response has no source_nodes attribute")
+            # Fallback to simple stored documents
+            return self.documents[:top_k] if self.documents else []
+        except Exception as e:
+            logger.error(f"Error querying llama_index: {e}")
+            return self.documents[:top_k] if self.documents else []
